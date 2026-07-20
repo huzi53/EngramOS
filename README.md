@@ -19,9 +19,11 @@ budget, risks, and the 12 spec flags that were found and fixed).
 - **One box:** Hetzner VPS · Docker Compose · Caddy (HTTPS) · FastAPI · worker
 - **One database:** PostgreSQL 16 + pgvector (vectors, full-text search, graph tables, job queue)
 - **Capture:** Android PWA with Web Share Target — no app store, no native build
-- **AI tiers:** Python heuristics (free) → cloud fast model (classify) → cloud smart model (enrich/mentor), hard daily budget cap
-- **AI provider:** replaceable by design — any OpenAI-compatible API (OpenAI, Kimi/Moonshot, Claude, …) via `.env` config; swaps gated by a classification eval set
-- **Embeddings:** all-MiniLM-L6-v2, 384-dim, CPU
+- **AI tiers:** Python heuristics (free) → cloud fast model (classify) → cloud smart model (enrich/briefing), hard daily budget cap
+- **AI provider:** replaceable by design — any OpenAI-compatible API via `.env` config, restricted to providers that don't train on API traffic (start: OpenAI); swaps gated by a classification eval set
+- **Mentor mode:** Engram exposes a remote MCP server; claude.ai (existing Pro sub) is the mentor interface — zero API cost for reasoning
+- **Embeddings:** multilingual-e5-small (Malay + English), 384-dim, CPU
+- **Running cost:** ~€5/mo VPS + ~$10/yr API topup + domain
 
 ## Roadmap
 
@@ -33,7 +35,7 @@ budget, risks, and the 12 spec flags that were found and fixed).
 | M3 | Auto-classification (budget-capped) |
 | M4 | Entity graph, related captures, projects |
 | M5 | Morning briefing, rediscovery, email ingestion |
-| M6 | Deep enrichment, mentor chat over your own data |
+| M6 | Deep enrichment, mentor via claude.ai MCP connector |
 | M7 | Hardening, export, voice, optional native app |
 
 MVP = M0–M3, ~1 month of build sessions.
