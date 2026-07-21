@@ -132,3 +132,34 @@ Files land on the host at `./data/captures/`; `scripts/backup.sh` now backs that
 alongside the Postgres dump.
 
 Self-check: `cd app && python test_capture.py` → `all asserts passed`.
+
+## M2 — Search
+
+Adds Tier-1 heuristic extraction (URL title/description, OCR on photos, dates/amounts/
+emails/phones), a 384-dim multilingual embedding per capture, and one hybrid search
+endpoint (`GET /api/v1/search?q=`, pgvector cosine + Postgres full-text, RRF-merged)
+behind a search box on the dashboard. Enrichment runs inline inside `store_capture()` —
+no worker, no job queue (see `plans/005-m2-search.md`).
+
+### One-time: apply the migration
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < db/migrations/002_search.sql
+```
+
+### Rebuild (bakes Tesseract + the embedding model into the image)
+```bash
+docker compose up -d --build
+```
+
+### Backfill pre-M2 captures
+Existing rows have no embedding yet — run once after the migration + rebuild:
+```bash
+docker compose exec api python backfill.py
+```
+
+### Run
+Dashboard now has a search box above the captures list: type a query, hit Search (or
+press Enter) — results are ranked by meaning + keyword, top-N first. Clear the box (or
+the Clear button) to go back to the recent-captures view.
+
+Self-check: `cd app && python test_extract.py` → `all asserts passed`.

@@ -8,6 +8,8 @@ from psycopg.types.json import Jsonb
 
 from auth import require_access
 from db import get_conn
+from embed import embed_passage, to_pgvector
+from extract import extract_amounts, extract_dates, extract_emails, extract_phones, extract_url_metadata, ocr_image
 
 router = APIRouter()
 
@@ -40,6 +42,43 @@ def safe_ext(filename: str) -> str:
     # NEVER build the storage path from the client filename (path-traversal guard).
     ext = os.path.splitext(os.path.basename(filename or ""))[1]
     return re.sub(r"[^a-zA-Z0-9.]", "", ext)
+
+
+def enrich(text, kind, file_bytes, mime) -> tuple[str | None, dict]:
+    """Tier-1 extraction + embedding for a NEW capture. Fails soft field-by-field
+    (each extractor already fails soft internally) — enrichment must never crash a capture.
+    """
+    extracted = {}
+    if kind == "url" and text:
+        extracted |= extract_url_metadata(text)
+    if kind == "photo" and file_bytes:
+        ocr_text = ocr_image(file_bytes)
+        if ocr_text:
+            extracted["ocr_text"] = ocr_text
+
+    doc_parts = [text or "", extracted.get("ocr_text", ""), extracted.get("url_title", ""), extracted.get("url_description", "")]
+    scan_text = " ".join(p for p in doc_parts if p)
+
+    emails = extract_emails(scan_text)
+    if emails:
+        extracted["emails"] = emails
+    phones = extract_phones(scan_text)
+    if phones:
+        extracted["phones"] = phones
+    amounts = extract_amounts(scan_text)
+    if amounts:
+        extracted["amounts"] = amounts
+    dates = extract_dates(scan_text)
+    if dates:
+        extracted["dates"] = dates
+
+    embedding = None
+    if scan_text.strip():
+        try:
+            embedding = to_pgvector(embed_passage(scan_text))
+        except Exception:
+            pass  # fail soft like every extractor above; backfill.py fills NULL embeddings later
+    return embedding, extracted
 
 
 def store_capture(user_id, source, *, text=None, file_bytes=None, file_name=None, mime=None, meta=None) -> dict:
@@ -85,6 +124,13 @@ def store_capture(user_id, source, *, text=None, file_bytes=None, file_name=None
             if stored_full_path:
                 os.remove(stored_full_path)  # orphan file from a duplicate write
             return {"id": str(row[0]), "kind": kind, "duplicate": True}
+
+        # NEW row only — never enrich the duplicate-hit path above.
+        embedding, extracted = enrich(content, kind, file_bytes, mime)
+        cur.execute(
+            "UPDATE captures SET embedding = %s::vector, extracted = %s WHERE id = %s",
+            (embedding, Jsonb(extracted), row[0]),
+        )
         conn.commit()
         return {"id": str(row[0]), "kind": kind, "duplicate": False}
 

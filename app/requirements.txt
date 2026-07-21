@@ -7,3 +7,10 @@ python-multipart  # required for FastAPI Form/File parsing (capture endpoint, M1
 # test-only, but CI installs just this file then runs pytest test_auth.py
 pytest
 httpx
+# M2 extraction + embeddings
+beautifulsoup4
+dateparser
+pytesseract
+Pillow
+--extra-index-url https://download.pytorch.org/whl/cpu
+sentence-transformers

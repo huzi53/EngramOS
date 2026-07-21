@@ -8,6 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from auth import router as auth_router
 from capture import router as capture_router
 from db import get_conn
+from embed import _get_model
+from search import router as search_router
 
 
 @asynccontextmanager
@@ -23,12 +25,14 @@ async def lifespan(app: FastAPI):
             (os.environ["AUTH_USERNAME"], os.environ["AUTH_PASSWORD_HASH"]),
         )
         conn.commit()
+    _get_model()  # warm the embedding model so the first capture doesn't eat the load time
     yield
 
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(capture_router)
+app.include_router(search_router)
 
 
 @app.get("/health")

@@ -27,5 +27,8 @@ jobs:
       - name: Run capture self-check
         run: python -m pytest app/test_capture.py -v
 
+      - name: Run extraction/search self-check
+        run: python -m pytest app/test_extract.py -v
+
       - name: Build API image
         run: docker build ./app

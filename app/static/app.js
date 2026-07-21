@@ -88,37 +88,88 @@ async function save() {
   }
 }
 
-async function loadList() {
+// Shared render for both the recent-captures list and search results — textContent only,
+// never innerHTML on capture content (M1's stored-XSS fix).
+function renderList(items, emptyText) {
   const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "meta";
+    li.textContent = emptyText;
+    list.appendChild(li);
+    return;
+  }
+  for (const c of items) {
+    const li = document.createElement("li");
+    const when = new Date(c.created_at).toLocaleString();
+    const kind = document.createElement("span");
+    kind.className = "kind";
+    kind.textContent = c.kind;
+    li.appendChild(kind);
+    li.appendChild(document.createTextNode(c.content || c.file_name || ""));
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = when;
+    li.appendChild(meta);
+    list.appendChild(li);
+  }
+}
+
+async function loadList() {
   try {
     const r = await authedFetch("/api/v1/captures");
     if (!r.ok) return;
-    const captures = await r.json();
-    list.innerHTML = "";
-    if (captures.length === 0) {
-      const li = document.createElement("li");
-      li.className = "meta";
-      li.textContent = "No captures yet.";
-      list.appendChild(li);
-      return;
-    }
-    for (const c of captures) {
-      const li = document.createElement("li");
-      const when = new Date(c.created_at).toLocaleString();
-      const kind = document.createElement("span");
-      kind.className = "kind";
-      kind.textContent = c.kind;
-      li.appendChild(kind);
-      li.appendChild(document.createTextNode(c.content || c.file_name || ""));
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = when;
-      li.appendChild(meta);
-      list.appendChild(li);
-    }
+    renderList(await r.json(), "No captures yet.");
   } catch {
     // transient network blip on a background refresh — list just stays stale, no need to alarm the user
   }
+}
+
+// Bumped on every search/clear so a slow, superseded request can't clobber a
+// newer one's view (e.g. user hits Clear, or fires a second search, while the
+// first request is still in flight).
+let searchSeq = 0;
+
+async function search() {
+  const q = document.getElementById("q").value.trim();
+  if (!q) { loadList(); return; }
+  const btn = document.getElementById("searchBtn");
+  if (btn.disabled) return; // already searching — ignore rapid Enter/click mashing
+  const seq = ++searchSeq;
+  const status = document.getElementById("searchStatus");
+  status.textContent = "";
+  status.className = "status";
+  btn.disabled = true;
+  btn.textContent = "Searching...";
+  try {
+    const r = await authedFetch("/api/v1/search?q=" + encodeURIComponent(q));
+    if (seq !== searchSeq) return; // superseded — a clear or newer search already updated the view
+    if (!r.ok) {
+      status.textContent = "Search failed, try again";
+      status.className = "status error";
+      return;
+    }
+    renderList(await r.json(), `No results for "${q}".`);
+  } catch {
+    if (seq !== searchSeq) return;
+    status.textContent = "Network error, try again";
+    status.className = "status error";
+  } finally {
+    if (seq === searchSeq) {
+      btn.disabled = false;
+      btn.textContent = "Search";
+    }
+  }
+}
+
+function clearSearch() {
+  searchSeq++; // invalidate any in-flight search response
+  document.getElementById("q").value = "";
+  document.getElementById("searchStatus").textContent = "";
+  document.getElementById("searchBtn").disabled = false;
+  document.getElementById("searchBtn").textContent = "Search";
+  loadList();
 }
 
 if (localStorage.getItem("access_token")) showApp();
