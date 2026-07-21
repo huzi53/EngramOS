@@ -47,9 +47,8 @@ MVP = M0–M3, ~1 month of build sessions.
 ## M0 — Run it
 
 ### Before you start (manual, one-time, outside this repo)
-- Buy a domain (Cloudflare Registrar) and point its DNS A-record at your VPS.
-- Create a Hetzner CX22 VPS (or equivalent) with Docker + Docker Compose installed.
-- Turn on 2FA for your Cloudflare account.
+- Docker Desktop with the **WSL2 backend** installed and running.
+- **Tailscale** installed on this laptop and on your phone, both logged into the same tailnet; enable HTTPS in the tailnet admin console (MagicDNS + HTTPS certs). Verify the phone can reach the laptop on **mobile data**, not just home Wi-Fi.
 - Create a Backblaze B2 bucket + application key (kept off Cloudflare on purpose — see plan.md).
 - OpenAI API key: not needed yet, deferred to M3.
 - Telegram bot token: not needed yet, deferred to M1.
@@ -59,7 +58,6 @@ MVP = M0–M3, ~1 month of build sessions.
 cp .env.example .env
 ```
 Fill in `.env`:
-- `DOMAIN` / `ACME_EMAIL` — your domain and Let's Encrypt contact.
 - `POSTGRES_*` / `DATABASE_URL` — pick a long random Postgres password.
 - `AUTH_USERNAME` — your login username.
 - `AUTH_PASSWORD_HASH` — generate with:
@@ -74,21 +72,27 @@ Fill in `.env`:
 ```bash
 docker compose up -d
 ```
-For local testing without a domain, set `DOMAIN=localhost` in `.env` — Caddy issues an internal cert — or hit the API directly at `http://localhost:8000`.
-
-Check it's alive: `curl https://$DOMAIN/health` (or `curl localhost:8000/health` locally) → `{"status":"ok"}`.
+This brings up Postgres, the API, and Caddy (plain HTTP, bound to `127.0.0.1:8080`). Expose it over Tailscale from the **Windows host** (not inside a container):
+```powershell
+tailscale serve --bg https / http://localhost:8080
+```
+Access from your phone at `https://<your-machine>.<your-tailnet>.ts.net/` — Tailscale's automatic cert is already trusted, no warning. Local check on the laptop: `curl http://localhost:8080/health` (or `curl http://localhost:8000/health` direct to the API) → `{"status":"ok"}`.
 
 Log in:
 ```bash
-curl -X POST https://$DOMAIN/api/v1/auth/login \
+curl -X POST https://<your-machine>.<your-tailnet>.ts.net/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"<AUTH_USERNAME>","password":"<your password>"}'
 ```
 Use the returned `access_token` as `Authorization: Bearer <token>` against `GET /api/v1/me`.
 
 ### Backups
-Schedule nightly via host crontab (not a container — laziest option, no extra service):
-```
-0 3 * * *  cd /opt/engram && ./scripts/backup.sh >> /var/log/engram-backup.log 2>&1
-```
+Schedule nightly via **Windows Task Scheduler** (the laptop has no host crontab). The script itself runs unchanged under WSL2 bash; Task Scheduler just invokes it via `wsl.exe`:
+- Program/script: `wsl.exe`
+- Arguments: `bash -lc "cd /mnt/c/Users/<you>/.../Engram-OS && ./scripts/backup.sh >> /tmp/engram-backup.log 2>&1"`
+- Trigger: daily 03:00.
+- **Conditions tab → check "Wake the computer to run this task"**, and in Windows **Power Options → Sleep → Allow wake timers = Enabled** — so the job fires even if the laptop is asleep. The laptop must still be powered on (plugged in) for the wake timer to work.
+
 To drill the restore half of the exit test: run `./scripts/backup.sh`, then `./scripts/restore.sh` — it restores the latest snapshot into a scratch DB and prints the `users` row count so you can confirm the data survived.
+
+Laptop uptime becomes a real problem? See [`docs/vps-graduation.md`](docs/vps-graduation.md) for the afternoon move to a VPS.

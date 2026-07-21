@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+psycopg[binary]
+pyjwt
+bcrypt
+# test-only, but CI installs just this file then runs pytest test_auth.py
+pytest
+httpx

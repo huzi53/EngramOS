@@ -1,0 +1,28 @@
+# ponytail: no deploy step in M0 — VPS SSH / Pages tokens don't exist yet. The
+# PWA-build-in-Actions workflow (plan.md M0: "frontend builds run in GitHub
+# Actions, never on the VPS") is added once the Next.js app lands in M1+; an
+# empty Pages deploy now would ship nothing.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install app dependencies
+        run: pip install -r app/requirements.txt
+
+      - name: Run auth self-check
+        run: python -m pytest app/test_auth.py -v
+
+      - name: Build API image
+        run: docker build ./app

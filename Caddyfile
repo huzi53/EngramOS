@@ -1,0 +1,5 @@
+# HTTP only — TLS is terminated by `tailscale serve` on the host (see README).
+# M1/M6 add more reverse_proxy blocks here (MCP server, Telegram is long-poll so no route).
+:80 {
+    reverse_proxy api:8000
+}
