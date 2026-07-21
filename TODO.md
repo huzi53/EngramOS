@@ -57,10 +57,43 @@ Running checklist for the Engram-OS + HuziOS repo work. Updated as steps complet
 
 ## Still needs the user's laptop (can't run in this sandbox)
 
-- [ ] Install/confirm Docker Desktop + WSL2 + Tailscale on the actual laptop.
-- [ ] `docker compose up -d` → confirm db/api/caddy all healthy.
-- [ ] `tailscale serve --bg https / http://localhost:8080`, then log in from the phone
-      over mobile data (not home wifi) — the real M0 exit test, half 1.
-- [ ] `./scripts/backup.sh` then `./scripts/restore.sh` against a real/local restic repo,
-      confirm the `users` row survives — exit test half 2.
-- [ ] Push `main` to origin once the above is confirmed working.
+- [x] Docker Desktop + WSL2 (Ubuntu) + Tailscale — all confirmed installed and running
+      (Docker Desktop just needed launching + login; CLI at
+      `C:\Users\xyqie\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe`).
+- [x] `.env` created from `.env.example`. `POSTGRES_PASSWORD`/`DATABASE_URL` and
+      `JWT_SECRET` auto-generated (random, low-sensitivity). `RESTIC_*`/`B2_*` left as
+      placeholders — user doesn't have a Backblaze B2 account yet, deferred as its own
+      step (doesn't block compose/login).
+- [x] User generated `AUTH_PASSWORD_HASH` themselves (password never entered this
+      chat), wired into `.env`.
+- [x] `docker compose up -d` → db healthy, api + caddy started.
+      `curl localhost:8080/health` → `{"status":"ok"}`.
+- [x] Login confirmed working locally with real credentials → returned `access_token`.
+- [x] `tailscale serve --bg http://localhost:8080` enabled (had to approve Serve for
+      the tailnet at the one-time admin-console link — account action, user did this).
+      Live at `https://bubu-ayien.tail8ab968.ts.net/`.
+- [x] **M0 exit test half 1: PASSED.** Phone reached `https://bubu-ayien.tail8ab968.ts.net/health`
+      → `{"status":"ok"}` over mobile data (Wi-Fi off), once the phone's Tailscale app
+      was connected (it had been idle/offline — reconnecting it was the fix).
+- [x] Backblaze B2 bucket (`EngramOS-Backup`, US West) + scoped app key created by
+      user, wired into `.env`. `restic init` run against `b2:EngramOS-Backup:engram`.
+- [x] **M0 exit test half 2: PASSED.** `./scripts/backup.sh` → `./scripts/restore.sh`
+      round trip against the real B2 repo: `users` row count = 1, matches expected.
+      Along the way: installed `restic` + enabled Docker Desktop's WSL integration for
+      Ubuntu (both one-time host setup, not repo changes) — Docker Desktop restart from
+      that toggle stopped all containers, brought them back with `docker compose up -d`.
+      Found and fixed a real regression: the earlier "leaked temp dir" fix in
+      `backup.sh` (commit `b7c36ac`) had switched to a plain `mktemp` file, which broke
+      `restore.sh`'s hardcoded `engram-db.dump` filename lookup — restore silently found
+      nothing. Fixed in `45cd2db`: back to `mktemp -d` + fixed filename, cleaned up with
+      `rm -rf` on the directory (the reviewer's originally-suggested alternative)
+      instead of `rm -f` on the file. Caught only because the full round trip was
+      actually run end to end, not just statically reviewed.
+- [x] **M0 fully done — both exit-test halves pass on the real laptop.**
+- [x] Pushed `main` to origin (all commits through `45cd2db`).
+
+## Optional follow-up (not required for M0, noted for later)
+
+- [ ] Set up the actual Windows Task Scheduler nightly job for `backup.sh` (README's
+      "Backups" section has the exact steps) — verified manually today, but not yet
+      running on an automated schedule.
