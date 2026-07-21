@@ -178,3 +178,10 @@ Running checklist for the Engram-OS + HuziOS repo work. Updated as steps complet
       yet — placeholder in `.env`), phone-over-Tailscale browser session untestable
       from this environment (API/UI confirmed serving correctly through Caddy though).
 - [x] **M1 code complete and verified — ready to commit.**
+- [x] **Telegram bot fully live.** User created @HuziOS_Engram_bot via @BotFather,
+      got chat ID `406207958` (found by reading it out of the bot's own getUpdates
+      response after the user messaged it — no need for a separate userinfo bot),
+      wired both into `.env`, restarted the `bot` service. Confirmed end to end: two
+      real messages sent from the user's phone ("hi", "hi how are you") both landed
+      in the `captures` table as real Telegram-sourced text captures. **M1 is now
+      fully operational, not just code-complete.**
