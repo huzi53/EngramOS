@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from auth import router as auth_router
+from capture import router as capture_router
 from db import get_conn
 
 
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(capture_router)
 
 
 @app.get("/health")
@@ -36,3 +39,7 @@ def health():
     except Exception:
         return JSONResponse(status_code=503, content={"status": "error"})
     return {"status": "ok"}
+
+
+# Mounted last so /health and /api/v1/* above take precedence over the catch-all "/".
+app.mount("/", StaticFiles(directory="static", html=True))

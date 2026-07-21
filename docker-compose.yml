@@ -7,7 +7,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/000_init.sql:ro
+      - ./db/migrations/001_captures.sql:/docker-entrypoint-initdb.d/001_captures.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -22,6 +23,20 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"  # local dev convenience; Caddy fronts this in prod
+    volumes:
+      - ./data:/data
+
+  bot:
+    build: ./app
+    command: python -u bot.py  # unbuffered so log lines (polling as <id>) show up immediately
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    # long-poll is outbound only — no ports, no Caddyfile route.
 
   caddy:
     image: caddy:2

@@ -3,6 +3,7 @@ uvicorn[standard]
 psycopg[binary]
 pyjwt
 bcrypt
+python-multipart  # required for FastAPI Form/File parsing (capture endpoint, M1)
 # test-only, but CI installs just this file then runs pytest test_auth.py
 pytest
 httpx

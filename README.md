@@ -96,3 +96,39 @@ Schedule nightly via **Windows Task Scheduler** (the laptop has no host crontab)
 To drill the restore half of the exit test: run `./scripts/backup.sh`, then `./scripts/restore.sh` — it restores the latest snapshot into a scratch DB and prints the `users` row count so you can confirm the data survived.
 
 Laptop uptime becomes a real problem? See [`docs/vps-graduation.md`](docs/vps-graduation.md) for the afternoon move to a VPS.
+
+## M1 — Capture
+
+Adds a captures table, `POST /api/v1/capture` (text/URL/photo/file/audio), a Telegram
+long-polling bot (no webhook, no public endpoint), and a minimal dashboard (quick-note +
+captures list) served as static HTML/JS from the API.
+
+### One-time: apply the migration
+The M0 stack is already running, so the new table isn't picked up by `init.sql` (that
+only runs on first boot of an empty pgdata volume). Apply it directly:
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" < db/migrations/001_captures.sql
+```
+
+### Configure
+Add to `.env` (see `.env.example`):
+- `TELEGRAM_BOT_TOKEN` — from [@BotFather](https://t.me/BotFather).
+- `TELEGRAM_ALLOWED_CHAT_ID` — message the bot once, then read `chat.id` from
+  `https://api.telegram.org/bot<token>/getUpdates`. Every other chat id is silently ignored.
+- `DATA_DIR=/data` — where captured files land inside the containers.
+
+### Run
+```bash
+docker compose up -d
+```
+Brings up `db`, `api`, `bot`, and `caddy`. The bot has no ports and needs no Caddy route —
+long-polling is outbound only. Check `docker compose logs bot` for `polling as <user_id>`.
+
+Dashboard: `https://<your-machine>.<your-tailnet>.ts.net/` — log in, type a note, hit Save.
+Telegram: forward a link, photo, or voice note to the bot — each replies "Saved ✅" (or
+"Already saved" if you forward the same thing twice, thanks to blake2b exact-dedup).
+
+Files land on the host at `./data/captures/`; `scripts/backup.sh` now backs that up
+alongside the Postgres dump.
+
+Self-check: `cd app && python test_capture.py` → `all asserts passed`.
