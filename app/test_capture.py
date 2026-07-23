@@ -14,6 +14,21 @@ def test_canonical_hash_stable_and_distinct():
     assert canonical_hash(b"hi") != canonical_hash(b"ho")
 
 
+def test_capture_identity_covers_kind_text_and_bytes():
+    # A capture's dedup identity must span kind + note text + file bytes, not the bytes alone.
+    img = b"\x89PNG-fake-image-bytes"
+    photo = "photo".encode()
+    # Same photo, different note -> distinct captures (else the 2nd note is silently dropped).
+    assert canonical_hash(photo, b"receipt monday", img) != canonical_hash(photo, b"receipt tuesday", img)
+    # Same bytes across unrelated captures (photo vs text note that happens to equal the bytes)
+    # must not collide.
+    assert canonical_hash(photo, b"", img) != canonical_hash("text".encode(), img, b"")
+    # Identical kind+text+bytes stays a true duplicate (idempotency preserved).
+    assert canonical_hash(photo, b"note", img) == canonical_hash(photo, b"note", img)
+    # Length-framing: parts can't ambiguously merge.
+    assert canonical_hash(b"a", b"bc") != canonical_hash(b"ab", b"c")
+
+
 def test_infer_kind():
     assert infer_kind("https://x.co/a", None, None) == "url"
     assert infer_kind("note", None, None) == "text"
@@ -36,6 +51,7 @@ def test_safe_ext_keeps_normal_extension():
 
 if __name__ == "__main__":
     test_canonical_hash_stable_and_distinct()
+    test_capture_identity_covers_kind_text_and_bytes()
     test_infer_kind()
     test_safe_ext_blocks_path_traversal()
     test_safe_ext_keeps_normal_extension()

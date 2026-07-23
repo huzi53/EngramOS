@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from psycopg.types.json import Jsonb
 
 from auth import require_access
-from db import get_conn
+from db import clamp_limit, get_conn
 from embed import embed_passage, to_pgvector
 from extract import extract_amounts, extract_dates, extract_emails, extract_phones, extract_url_metadata, ocr_image
 
@@ -20,8 +20,13 @@ MAX_BYTES = 25 * 1024 * 1024  # Telegram's ~20MB getFile cap + margin; disk-fill
 URL_RE = re.compile(r"^https?://\S+$")
 
 
-def canonical_hash(data: bytes) -> bytes:
-    return hashlib.blake2b(data).digest()
+def canonical_hash(*parts: bytes) -> bytes:
+    # Length-framed so parts can't ambiguously merge (b"a"+b"bc" must differ from b"ab"+b"c").
+    h = hashlib.blake2b()
+    for p in parts:
+        h.update(len(p).to_bytes(8, "big"))
+        h.update(p)
+    return h.digest()
 
 
 def infer_kind(text, filename, mime) -> str:
@@ -88,10 +93,15 @@ def store_capture(user_id, source, *, text=None, file_bytes=None, file_name=None
         raise ValueError("too large")
 
     kind = infer_kind(text, file_name, mime)
-    digest = canonical_hash(file_bytes if file_bytes else text.strip().encode())
+    content = text.strip() if text else None
+    # Content-address over everything that makes a capture distinct — kind, note text, AND
+    # file bytes — not the file bytes alone. Otherwise the same photo re-sent with a changed
+    # or added note is silently dropped as a "duplicate" (its new note lost at HTTP 201), and
+    # a photo dedups against any unrelated capture that merely shares bytes. Re-sending an
+    # identical kind+text+file is still a true duplicate, so idempotency is preserved.
+    digest = canonical_hash(kind.encode(), (content or "").encode(), file_bytes or b"")
 
     file_path = None
-    content = text.strip() if text else None
     stored_full_path = None
     if file_bytes:
         ext = safe_ext(file_name)
@@ -136,13 +146,16 @@ def store_capture(user_id, source, *, text=None, file_bytes=None, file_name=None
 
 
 @router.post("/api/v1/capture", status_code=201)
-async def capture(
+def capture(
     text: str | None = Form(None),
     source: str = Form("api"),
     file: UploadFile | None = File(None),
     payload: dict = Depends(require_access),
 ):
-    file_bytes = await file.read(MAX_BYTES + 1) if file else None
+    # plain def (not async): store_capture does blocking DB/embedding/OCR/URL-fetch work,
+    # so FastAPI runs this in its threadpool instead of the event loop (matches
+    # list_captures/search below). file.file.read() is the sync counterpart of await file.read().
+    file_bytes = file.file.read(MAX_BYTES + 1) if file else None
     if file_bytes and len(file_bytes) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="too large")
     try:
@@ -162,6 +175,7 @@ async def capture(
 
 @router.get("/api/v1/captures")
 def list_captures(limit: int = 50, payload: dict = Depends(require_access)):
+    limit = clamp_limit(limit)
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """

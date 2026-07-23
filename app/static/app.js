@@ -1,5 +1,4 @@
-// Minimal quick-note + captures list. No framework, no build — this is the private
-// text-only path (media goes via Telegram, see plans/004 Cut).
+// Minimal quick-note + captures list. No framework, no build.
 
 function showApp() {
   document.getElementById("login").style.display = "none";
@@ -57,8 +56,10 @@ async function authedFetch(url, options = {}) {
 
 async function save() {
   const note = document.getElementById("note");
+  const photo = document.getElementById("photo");
   const text = note.value.trim();
-  if (!text) return;
+  const file = photo.files[0];
+  if (!text && !file) return;
   const btn = document.getElementById("saveBtn");
   const status = document.getElementById("noteStatus");
   status.textContent = "";
@@ -67,11 +68,13 @@ async function save() {
   btn.textContent = "Saving...";
   try {
     const form = new FormData();
-    form.append("text", text);
+    if (text) form.append("text", text);
+    if (file) form.append("file", file);
     form.append("source", "quicknote");
     const r = await authedFetch("/api/v1/capture", { method: "POST", body: form });
     if (r.ok) {
       note.value = "";
+      photo.value = "";
       status.textContent = "Saved";
       status.className = "status ok";
       loadList();

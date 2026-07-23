@@ -86,6 +86,22 @@ curl -X POST https://<your-machine>.<your-tailnet>.ts.net/api/v1/auth/login \
 ```
 Use the returned `access_token` as `Authorization: Bearer <token>` against `GET /api/v1/me`.
 
+### Applying code changes
+`app/` (including `app/static/`) is baked into the `api` image at build time, not
+bind-mounted — editing a file on disk has no effect until you rebuild:
+```bash
+docker compose up -d --build api
+```
+This rebuilds just the `api` image and recreates that one container; `db`, `bot`, and
+`caddy` are left running. After a dashboard change, hard-refresh (or reopen) the browser
+tab too — a tab left open from before the rebuild is still running the old page.
+
+If you only changed a `.env` value (no code/file changes), a plain restart is enough and
+skips the rebuild:
+```bash
+docker compose restart api
+```
+
 ### Backups
 Schedule nightly via **Windows Task Scheduler** (the laptop has no host crontab). The script itself runs unchanged under WSL2 bash; Task Scheduler just invokes it via `wsl.exe`:
 - Program/script: `wsl.exe`

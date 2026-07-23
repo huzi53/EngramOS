@@ -19,6 +19,7 @@ AMOUNT_RE = re.compile(r"(?:RM|\$|€|£)\s?\d[\d,]*(?:\.\d+)?")
 FETCH_TIMEOUT = 5.0
 MAX_FETCH_BYTES = 512 * 1024
 MAX_REDIRECTS = 3
+MAX_DATE_SEARCH_CHARS = 2000  # dateparser.search scans the whole string; cap OCR-blob input
 
 
 def extract_emails(text: str) -> list[str]:
@@ -38,7 +39,9 @@ def extract_dates(text: str) -> list[str]:
         return []
     try:
         from dateparser.search import search_dates
-        found = search_dates(text)
+        # languages=["en"] skips dateparser's all-locale search (slow on longer OCR
+        # blobs); OCR is English-only per the Dockerfile. Length-capped for the same reason.
+        found = search_dates(text[:MAX_DATE_SEARCH_CHARS], languages=["en"])
     except Exception:
         # dateparser can be slow/raise on junk input — dates are best-effort, never fatal.
         return []

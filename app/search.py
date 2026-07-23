@@ -6,7 +6,7 @@ by *rank* so no score normalization is needed. The vector list carries a higher 
 from fastapi import APIRouter, Depends
 
 from auth import require_access
-from db import get_conn
+from db import clamp_limit, get_conn
 from embed import embed_query, to_pgvector
 
 router = APIRouter()
@@ -20,6 +20,12 @@ CANDIDATES = 20  # per-source candidate pool fed into the fusion
 # ever proves too blunt: tiebreak near-equal fused scores by cosine distance.
 W_VEC = 2.0
 W_FTS = 1.0
+
+# ponytail: first-pass calibrated constant, not tuned on real usage data. Without a
+# distance floor, "20 nearest by cosine distance" always returns 20 candidates even for
+# a nonsense query on a small table, so RRF fuses in unrelated captures as if relevant.
+# intfloat/multilingual-e5-small; revisit once there's real query/relevance data.
+VECTOR_MAX_DISTANCE = 0.5
 
 
 def fuse(vector_ids: list[str], fts_ids: list[str]) -> dict[str, float]:
@@ -42,16 +48,18 @@ def search(q: str = "", limit: int = 10, payload: dict = Depends(require_access)
     if not q:
         return []
     user_id = payload["sub"]
+    limit = clamp_limit(limit)
     qvec = to_pgvector(embed_query(q))
 
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """
             SELECT id, source, kind, content, file_name, created_at
-            FROM captures WHERE user_id = %s AND embedding IS NOT NULL
+            FROM captures
+            WHERE user_id = %s AND embedding IS NOT NULL AND embedding <=> %s::vector < %s
             ORDER BY embedding <=> %s::vector LIMIT %s
             """,
-            (user_id, qvec, CANDIDATES),
+            (user_id, qvec, VECTOR_MAX_DISTANCE, qvec, CANDIDATES),
         )
         cols = [c.name for c in cur.description]
         vector_rows = [dict(zip(cols, row)) for row in cur.fetchall()]

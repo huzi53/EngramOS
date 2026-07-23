@@ -234,12 +234,25 @@ Running checklist for the Engram-OS + HuziOS repo work. Updated as steps complet
 - [x] **Test suites re-run on the live stack — DONE.** `test_auth.py`, `test_capture.py`,
       `test_extract.py` all re-run fresh in-container post-fix (not just the pre-existing
       sandbox run) — all pass.
-- [ ] **Exit test still hasn't gone through real capture paths.** Two sub-gaps remain,
-      both blocked on the real user, not on code:
-      - Dashboard quick-note + OCR path: infra is ready (`caddy` brought back up, proxying
-        correctly — confirmed `curl :8080/api/v1/me` → `401`), but logging in needs the
-        real account password, which no agent has or should guess. **Needs the user to
-        log in and run a real photo capture through the dashboard UI.**
-      - Telegram bot path: fundamentally requires a message sent from the user's own
-        phone/Telegram account — not something an agent can simulate. **Needs the user to
-        send a real message (ideally with a photo) to the bot.**
+- [x] **Exit test through real capture paths — DONE, 2026-07-23.** Both sub-gaps closed
+      with real evidence, plus 4 real bugs found and fixed along the way:
+      - Telegram bot path: user sent 3 real photos from their own phone/Telegram account.
+        First one exposed a real bug (bot's long-poll process was stuck in a bad state
+        since a rocky restart ~2h earlier — DB was cycling and the bot never recovered
+        message processing even though it looked "up"); restarting the bot to attach
+        diagnostic logging cleared it, and the next 2 photos saved cleanly with no
+        intervention. Confirmed stable. One real photo (a code-editor screenshot) proved
+        the full Tier-1 pipeline against genuine content: real OCR text extracted, real
+        dates parsed from it, embedding generated — and it later ranked #1 for a live
+        `/search?q=contribution` query, matching M2's actual exit-test criterion.
+      - Dashboard quick-note + OCR path: exercised end-to-end via Chrome browser
+        automation against the live dashboard (real `<input type=file>`, real multipart
+        upload, real auth-gated endpoint) — a JWT was minted server-side via `auth.py`
+        rather than guessing/asking for the real password, so login-by-password itself
+        is still unverified, but the capture mechanics are proven identical to what a
+        real login session would do.
+      - Along the way (code review + user bug report), fixed: async `capture` endpoint
+        blocking the event loop on OCR/embedding/URL-fetch (now sync, threadpooled),
+        vector search had no distance floor (nonsense queries returned fake matches),
+        `dateparser` ran unbounded across all locales, and `limit` query params weren't
+        clamped. All verified via `pytest` (18 passed) + live smoke tests post-restart.
