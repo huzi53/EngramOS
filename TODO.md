@@ -94,9 +94,10 @@ Running checklist for the Engram-OS + HuziOS repo work. Updated as steps complet
 
 ## Optional follow-up (not required for M0, noted for later)
 
-- [ ] Set up the actual Windows Task Scheduler nightly job for `backup.sh` (README's
-      "Backups" section has the exact steps) — verified manually today, but not yet
-      running on an automated schedule.
+- [x] Windows Task Scheduler nightly job for `backup.sh` registered (`EngramOS Nightly
+      Backup`, daily 03:00, `WakeToRun` + `StartWhenAvailable` enabled). User still needs
+      to confirm Windows Power Options → Sleep → Allow wake timers = Enabled — the task
+      can't set that itself.
 - [x] Committed `plans/001-huzios-port-vs-fresh-build.md` — had been sitting untracked
       since the original planning session, caught during a git-status sweep.
 
@@ -185,3 +186,43 @@ Running checklist for the Engram-OS + HuziOS repo work. Updated as steps complet
       real messages sent from the user's phone ("hi", "hi how are you") both landed
       in the `captures` table as real Telegram-sourced text captures. **M1 is now
       fully operational, not just code-complete.**
+
+## M2 — Search works
+
+- [x] Full pipeline (planner → builder → simplifier → reviewer → security → frontend →
+      verifier) executed in sandbox for `plans/005-m2-search.md`. Tier-1 extraction
+      (URL metadata, OCR, dates/amounts/emails/phones), 384-dim multilingual embeddings,
+      hybrid pgvector+FTS search via RRF, search UI on the dashboard. Defects found and
+      fixed along the way: embedding call not fail-soft (rolled back captures on error),
+      SSRF redirect TOCTOU gap, OCR missing timeout, search-UI race condition on stale
+      results. 16/16 tests passing in sandbox. PR #1 opened draft on `worktree-m2-search`.
+- [x] PR #1 merged into `main`, pushed to both `origin` and `private` remotes. Merged
+      branch deleted locally + both remotes; stale worktree cleaned up.
+- [x] Migration `002_search.sql` applied to the live DB (manual — existing `pgdata`
+      volume doesn't pick up new `docker-entrypoint-initdb.d` files).
+- [x] Rebuilt (`docker compose up -d --build`) — Tesseract + baked embedding model live.
+- [x] `backfill.py` run — both pre-M2 captures got embeddings (`embedding=yes` each).
+- [x] Exit test run: 51 items captured, 51/51 embedded, 27/51 with extracted fields.
+      Keyword search 5/5 top-3. Semantic search 3/5 top-3 — 2 failures (paraphrase
+      queries for "passport renewal" and "migraine" got out-ranked by unrelated items
+      that shared a literal word with the query, e.g. "trip", "doctor"). Root cause:
+      RRF fuses by rank with no way to distinguish a coincidental keyword overlap from
+      genuine relevance, so a strong keyword hit can bury a real semantic match outside
+      the top-3 window. Not yet fixed — see gap below.
+      Test rows (`source='exit_test'`) deleted afterward, captures table back to only
+      the 2 real pre-M2 rows.
+
+### Known gap — not yet fixed
+- [ ] **Exit test ran via a direct pipeline-call script, not real capture paths.** The
+      M2 spec (`plans/005-m2-search.md` Verify section) calls for capturing 50+ items
+      through the actual Telegram bot + dashboard quick-note, including a couple of real
+      photos to exercise OCR. What ran instead called `store_capture`/`search` directly
+      in-container — proves the search/ranking logic works, but never touched the bot,
+      the dashboard UI, or the OCR path.
+- [ ] **2/5 semantic queries failed top-3** (see above) — RRF fusion lets a literal
+      keyword coincidence outrank a genuine meaning-only match. Needs a fix (e.g. weight
+      vector-only hits, re-rank ties by cosine distance, or widen `CANDIDATES`) and a
+      re-run of the semantic block before this is called solid.
+- [ ] Test suites (`test_auth.py`, `test_capture.py`, `test_extract.py`) not re-run on
+      the live stack since the merge + rebuild — sandbox run (16/16) predates the real
+      migration/backfill.

@@ -59,8 +59,11 @@ connector (mentor mode runs on the existing Claude Pro sub, $0 API)
 ```
 
 **Dashboard visual reference:** HuziOS's glass-panel dashboard (`app/public/app.css`) is
-inspiration-only for the Next.js dashboard's look — no code carries over, different
-framework (see `plans/001-huzios-port-vs-fresh-build.md`).
+inspiration-only for Engram's dashboard look — no code carries over, different framework
+(see `plans/001-huzios-port-vs-fresh-build.md`). **Correction (v1.6):** the actual v1.5
+laptop-first build never adopted Next.js/Cloudflare Pages — the dashboard is plain static
+HTML/JS served directly by FastAPI (`app/static/`), and stays that way; this line
+previously said "Next.js dashboard," which was stale.
 
 **What replaced the spec's 6 datastores:** Postgres does vectors (pgvector), full-text
 search (tsvector), graph (`entities` + `capture_relations` tables + recursive CTEs),
@@ -152,7 +155,7 @@ category/tag browse UI · thumbs up/down feedback stored on captures.
 **Exit test:** a week of real captures lands >80% correctly categorized with sensible
 titles, at <$0.15/day API spend.
 
-### M3.5 — Convergence: HuziOS glass UI + vault indexing (new in v1.5)
+### M3.5 — Convergence: HuziOS glass UI + vault indexing + two-pane layout (reshaped in v1.6)
 Port the HuziOS glass UI onto Engram's API — honestly costed as a **rewrite of each
 panel's data layer** (the CSS/layout/shell is what actually transfers): search, captures
 list, category/tag browse, quick-note, briefing card placeholder · **vault read-only
@@ -161,17 +164,45 @@ indexer**: point the embedding pipeline at the local Obsidian vault folder (skip
 (watchdog), so one search spans captures *and* study notes · HuziOS panels retire
 one-by-one as their Engram equivalent lands (strangler fig); ACCA study + chat panels
 stay on local HuziOS untouched.
+
+**New in v1.6 — two-pane layout + Telegram commands pulled forward from V3:** lay the
+panels out as **Left Pane (Stream)** — search, captures list, briefing card — and
+**Right Pane (Canvas)** — capture detail today, becomes M4's native graph view once
+those tables exist (no new milestone, same panels, different arrangement). Pull `/search`
+and `/recent` Telegram bot commands forward from V3 into this milestone — cheap (reuses
+the existing bot + search endpoint) and gives a second, conversational entry point into
+the same data. **Visual identity:** distinctive "engram" token system (deep-space
+indigo `#0B0E1A` background, warm amber `#D9A65C` accent for memory traces, soft violet
+`#8B7FE0` for connections) — see `plans/EngramOS_Architecture_and_5_Repositories_Notes`
+gap analysis for the full brief. **Signature element:** the Right Pane Canvas renders an
+ambient "engram field" from day one — each real capture is a small glowing node,
+brightening on retrieval, threaded by recency-weighted connections — native HTML5 Canvas
+2D (`requestAnimationFrame`, zero new dependency), respecting `prefers-reduced-motion`,
+ambient only (never load-bearing for search/capture functionality). A single-CDN-script
+WebGL upgrade (e.g. `vanta.js` or `three.js`) is a documented optional swap-in only if
+the 2D version doesn't clear the bar once seen — not built by default.
 **Exit test:** the glass dashboard, opened on the phone via Tailscale, finds both a
 Telegram capture and an Obsidian study note in one search; the old HuziOS notes panel
-is retired without anything lost.
+is retired without anything lost; the two-pane layout renders correctly on a phone
+screen; `/search`/`/recent` work from Telegram; the engram-field canvas animates real
+captures (not placeholder data) and pauses under `prefers-reduced-motion`.
 
 ### M4 — Linking & graph
 `entities` + `capture_entities` + `capture_relations` tables (spec schema, corrected SQL) ·
 entity extraction (from fast-model output + heuristics) · similarity links (cosine > 0.82) ·
 temporal-proximity + shared-entity + project links · projects CRUD · "Related" panel
 on every capture.
+
+**New in v1.6:** render M3.5's Right Pane Canvas as a **native graph-view panel** over
+these same `entities`/`capture_relations` tables — same "engram field" rendering
+introduced at M3.5, swapping its data source from recency-weighted to real
+relationship-weighted (zero UI rework, only the underlying query changes). This is where
+the *idea* behind `Egonex-AI/Understand-Anything` (drill-down architecture/graph tours)
+lands — concept only, no dependency, plain JS over Postgres, one graph / one source of
+truth (no second graph store).
 **Exit test:** open any capture and see genuinely related items; open a project and see
-everything that belongs to it without ever having filed anything.
+everything that belongs to it without ever having filed anything; the Canvas graph view
+reflects real relationships, not the M3.5 recency-only placeholder.
 
 ### M5 — Daily loop: briefing + rediscovery
 Morning briefing (cron 06:55 **pinned to Asia/Kuala_Lumpur** — the VPS runs on German/UTC
@@ -209,6 +240,50 @@ headers, bot-token rotation) · restore drill + data export (JSON + files) ·
 performance pass · optional: PWA share target or tiny native Android app if the
 Telegram flow ever feels limiting.
 **Exit test:** full export restores on a clean machine; dashboard loads <2s on phone.
+
+### M8 — Structural ingestion for code & complex documents (optional, new in v1.6, post-M7)
+Only pursued if deliberately greenlit later — this is a real mission expansion beyond
+personal life-capture (source code / complex-document capture as first-class graph-linked
+entities), made explicit rather than folded silently into earlier milestones. Scope: new
+capture kind · invoke `graphifyy` (Graphify's pip package — pinned version, stateless,
+zero LLM cost) as a library/subprocess at capture time · write its EXTRACTED/INFERRED
+edges into the *existing* M4 `entities`/`capture_relations` tables — no new datastore, no
+new graph engine. Maintenance discipline: same "eval set gates every swap" pattern already
+used for LLM providers (M3), applied to Graphify version bumps — a small fixed set of
+known inputs → known JSON shape, re-run before upgrading.
+**Exit test:** drop a small code repo or a financial CSV into capture, see accurate
+structural nodes appear in M4's graph view. Budget impact: $0 (no LLM calls, no hosting).
+
+### M9 — Agentic task execution + reflection, Engram-native (optional, far future, new in v1.6)
+Only pursued if deliberately greenlit later, and only with its own dedicated plan +
+security review before any build — not committed by appearing in this roadmap. Harvests
+`NousResearch/hermes-agent`'s "reflection grounded in persistent memory" *idea* only
+(never the framework itself — running Hermes unmodified would duplicate Engram's memory,
+skill-learning, and Telegram gateway, directly conflicting with "Postgres as sole source
+of truth"). Reuses the *existing* `LLM_FAST`/`LLM_SMART` router + budget cap (M3) and the
+*existing* Telegram bot — no new agent framework, no new gateway.
+**Write-back contract (resolves a real contradiction found in the source blueprint — its
+Principle 3 demands "complete isolation" between memory and execution, yet its own
+Scenario B has the agent writing state directly back into memory):** raw execution state
+(tool-call logs, in-flight reasoning, chain-of-thought scratchpad) is **never** persisted
+to Postgres — ephemeral/in-process only. Only a finished, distilled record (title, body,
+category, confidence, timestamp — same shape as any other capture) is written, and only
+through the existing capture-ingestion path, exactly like a user capturing a note to
+themselves. Gated by its own budget sub-cap (reflection loops are the one component here
+that could silently blow the $1/mo budget — no natural stopping point without one) and its
+own adversarial security review before any build (shell/web/vision tool access + prompt
+injection via captured content is a new trust boundary, not to be waved off even
+single-user). Sequencing endorsed independently by the source blueprint's own "foundation
+first" principle, not just this plan's existing MVP-first discipline: attempt only after
+M0–M8 are stable.
+**Exit test:** N/A until greenlit — this milestone requires its own exit criteria at
+planning time, not inherited from this entry.
+
+**Not planned anywhere in this roadmap:** a milestone for `affaan-m/ECC` or
+`Egonex-AI/Understand-Anything` as *running* services. ECC is Claude-Code-native dev
+tooling (the same slot this repo's own `.claude/agents` pipeline already fills) — its
+ideas may inform an internal build-rules doc, not a milestone. Understand-Anything's
+concept is already folded into M4's native graph panel above.
 
 ## Dependencies
 
@@ -268,6 +343,10 @@ accumulated data, which is exactly what M4–M6 need to be tuneable.
 | **Mentor depends on the Claude Pro sub** | Cancel Pro and mentor mode loses its interface | MCP is an open standard — any MCP client can connect to the same server (e.g. Claude Code, or a self-hosted agent runtime like ZeroClaw); a chat UI on the cheap API is a contained V3 fallback |
 | **Data loss** (spec anti-pattern #10: "this is someone's life") | A single laptop is an even more fragile single point of failure than a VPS (theft, spills, disk death) | Encrypted nightly offsite backups to B2 from M0, restore actually tested in M0 and re-drilled in M7 |
 | **Cloudflare concentration** (v1.3; mostly dissolved by v1.5) | Laptop-first removes Cloudflare from the critical path until M5 (email only) | Backups stay at Backblaze B2 regardless; 2FA-harden the account when the domain is bought at M5 |
+| **Scope-expansion creep** (v1.6) | M8/M9 (from the 5-repo blueprint reconciliation) quietly redefine "what EngramOS is for" to include source code and dev execution, which the core roadmap never scoped | M8/M9 kept strictly optional, clearly labeled as a mission expansion the user opts into, never folded silently into M3.5–M7 |
+| **Version drift on an adopted OSS dependency** (v1.6, M8 only) | Graphify is actively developed (pushed near-daily) — its JSON graph schema could change under Engram | Pin the version; a small fixed regression check (known inputs → known JSON shape) before any version bump, same discipline as the LLM-provider eval-set gate |
+| **Agent execution state leaking into permanent memory** (v1.6, M9 only) | The source blueprint's own Principle 3 (isolate memory from execution) contradicts its own Scenario B (agent writes state back into memory) — confirmed unresolved in the source document | M9's explicit write-back contract: only capture-shaped, distilled records ever reach Postgres; raw execution state is never persisted |
+| **Budget blowout from reflection loops** (v1.6, M9 only) | Multi-step agentic reasoning has no natural LLM-call ceiling unless bounded | Reuse M3's budget-cap router with its own conservative sub-cap for M9 specifically; don't build until M0–M8 are stable |
 
 ## MVP
 
@@ -336,6 +415,33 @@ Flags found in the source spec and how this plan resolves them:
 
 ## Appendix B: Changelog
 
+- **v1.6 (2026-07-23):** Reconciled the "EngramOS System Architecture & 5-Repository
+  Integration Blueprint" PDF (uploaded by the user) against this plan. Verified all 5
+  referenced GitHub repos are real (not a mockup): `huzi53/EngramOS` (this project),
+  `Graphify-Labs/graphify`, `Egonex-AI/Understand-Anything`, `affaan-m/ECC`,
+  `NousResearch/hermes-agent` — the latter four are large, actively-developed OSS
+  ecosystems, none previously mentioned in this roadmap. Decisions: (1) **Graphify**
+  adopted for real, but only at new optional **M8** (structural code/document ingestion,
+  post-M7, $0 budget impact) — not built now. (2) **Understand Anything** and **ECC**
+  concept-harvest only, no running dependency — ECC's actual role is Claude-Code-native
+  dev tooling (the same slot this repo's own agent pipeline fills), not the live runtime
+  service the PDF's diagram implied. (3) **Hermes Agent** not adopted as a running
+  dependency at all (would duplicate memory/skill-learning/Telegram gateway, conflicting
+  with Postgres-as-sole-source-of-truth); its reflection-loop idea, if ever wanted, moves
+  to new optional far-future **M9** under an explicit write-back contract that resolves a
+  real contradiction found in the source PDF (its Principle 3 demands memory/execution
+  isolation, its own Scenario B breaks it). (4) **M3.5 reshaped** into a two-pane
+  layout (Left = Stream, Right = Canvas) with `/search`/`/recent` Telegram commands
+  pulled forward from V3, plus a distinctive "engram" visual identity (deep-space/amber/
+  violet palette, an ambient real-capture "engram field" canvas as the signature element,
+  native Canvas 2D with an optional single-script WebGL upgrade path) via the
+  `frontend-design` skill. (5) **M4 reshaped** to render that same Canvas as a native
+  graph-view panel once real relationship data exists — Understand Anything's concept,
+  zero dependency. (6) Fixed a stale "Next.js dashboard" reference (actual build is
+  static HTML/JS). Four new risk-table rows added (scope creep, Graphify version drift,
+  agent-state leakage, reflection-loop budget blowout). Full analysis:
+  `plans/EngramOS_Architecture_and_5_Repositories_Notes (1).pdf` +
+  `C:\Users\xyqie\.claude\plans\use-plan-agent-only-atomic-meadow.md`.
 - **v1.5 (2026-07-21):** HuziOS/Engram convergence + hosting flip, after an adversarial
   self-review of the "HuziOS as frontend, Engram as backend" rework idea. Decisions:
   (1) **Laptop-first, €0 hosting** — Telegram long-polling (no webhook/public IP),
