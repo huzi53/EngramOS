@@ -1,6 +1,7 @@
 """Hybrid search: pgvector cosine (meaning) + Postgres FTS (keyword), merged by
 Reciprocal Rank Fusion. Cosine distance and ts_rank are incomparable scales; RRF fuses
-by *rank* so no score normalization is needed.
+by *rank* so no score normalization is needed. The vector list carries a higher weight
+(W_VEC > W_FTS) so a meaning-only match isn't buried under a coincidental keyword hit.
 """
 from fastapi import APIRouter, Depends
 
@@ -13,16 +14,25 @@ router = APIRouter()
 RRF_K = 60
 CANDIDATES = 20  # per-source candidate pool fed into the fusion
 
+# ponytail: calibration knob. Vector hits weighted above FTS so a meaning-only match
+# isn't buried under a coincidental keyword hit. 2.0 fixes the 2 documented paraphrase
+# failures; retune only if the exit-test semantic block regresses. Upgrade path if this
+# ever proves too blunt: tiebreak near-equal fused scores by cosine distance.
+W_VEC = 2.0
+W_FTS = 1.0
+
 
 def fuse(vector_ids: list[str], fts_ids: list[str]) -> dict[str, float]:
     """Reciprocal Rank Fusion: id -> fused score. rank is 0-based position in each list.
-    Pure function (no DB) so it's directly unit-testable.
+    Vector list is weighted above the FTS list (W_VEC > W_FTS) so a meaning-only match
+    isn't buried under a coincidental keyword hit. Pure function (no DB) so it's directly
+    unit-testable.
     """
     scores: dict[str, float] = {}
     for rank, id_ in enumerate(vector_ids):
-        scores[id_] = scores.get(id_, 0.0) + 1.0 / (RRF_K + rank)
+        scores[id_] = scores.get(id_, 0.0) + W_VEC / (RRF_K + rank)
     for rank, id_ in enumerate(fts_ids):
-        scores[id_] = scores.get(id_, 0.0) + 1.0 / (RRF_K + rank)
+        scores[id_] = scores.get(id_, 0.0) + W_FTS / (RRF_K + rank)
     return scores
 
 

@@ -50,6 +50,13 @@ def test_rrf_fusion_prefers_ids_ranked_high_in_both():
     assert scores["b"] > scores["d"]
 
 
+def test_rrf_vector_only_beats_fts_only_coincidence():
+    # M2 exit-test bug: a meaning-only match (vector list, not rank 0) lost to a
+    # coincidental keyword hit (fts rank 0). Weighted RRF must rank the vector match higher.
+    scores = fuse(["other", "true_match"], ["distractor"])
+    assert scores["true_match"] > scores["distractor"]
+
+
 if __name__ == "__main__":
     test_extract_emails()
     test_extract_phones()
@@ -57,4 +64,5 @@ if __name__ == "__main__":
     test_extract_dates()
     test_fetch_url_rejects_ssrf_targets()
     test_rrf_fusion_prefers_ids_ranked_high_in_both()
+    test_rrf_vector_only_beats_fts_only_coincidence()
     print("all asserts passed")

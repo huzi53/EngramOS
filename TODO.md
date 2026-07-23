@@ -212,17 +212,34 @@ Running checklist for the Engram-OS + HuziOS repo work. Updated as steps complet
       Test rows (`source='exit_test'`) deleted afterward, captures table back to only
       the 2 real pre-M2 rows.
 
-### Known gap — not yet fixed
-- [ ] **Exit test ran via a direct pipeline-call script, not real capture paths.** The
-      M2 spec (`plans/005-m2-search.md` Verify section) calls for capturing 50+ items
-      through the actual Telegram bot + dashboard quick-note, including a couple of real
-      photos to exercise OCR. What ran instead called `store_capture`/`search` directly
-      in-container — proves the search/ranking logic works, but never touched the bot,
-      the dashboard UI, or the OCR path.
-- [ ] **2/5 semantic queries failed top-3** (see above) — RRF fusion lets a literal
-      keyword coincidence outrank a genuine meaning-only match. Needs a fix (e.g. weight
-      vector-only hits, re-rank ties by cosine distance, or widen `CANDIDATES`) and a
-      re-run of the semantic block before this is called solid.
-- [ ] Test suites (`test_auth.py`, `test_capture.py`, `test_extract.py`) not re-run on
-      the live stack since the merge + rebuild — sandbox run (16/16) predates the real
-      migration/backfill.
+### Known gap — status as of 2026-07-23
+
+- [x] **2/5 semantic queries failing top-3 — FIXED.** Full pipeline (planner → builder →
+      simplifier → reviewer → verifier) ran on `plans/006-m2-rrf-ranking-fix.md`. Root
+      cause: pure RRF scored a vector-only true match (rank 1: `1/61≈0.01639`) just below
+      an FTS-only coincidental-keyword distractor (rank 0: `1/60≈0.01667`) — a wash that
+      buried real meaning-only matches. Fix: `app/search.py::fuse()` now weights the
+      vector list 2x over FTS (`W_VEC=2.0`/`W_FTS=1.0`, one-constant tune, `ponytail:`
+      comment marks it as a calibration knob). New regression test
+      `test_rrf_vector_only_beats_fts_only_coincidence` in `test_extract.py` (fails under
+      old unweighted RRF, passes under the fix — confirmed not a tautology). New
+      disposable `app/exit_test_semantic.py` reconstructs the documented failure cases
+      (original 51-item corpus script no longer exists) plus 3 control queries. Verified
+      independently by the verifier stage on the live Docker stack: 3 consecutive runs,
+      5/5 top-3 each time (both "passport renewal" and "migraine" cases now pass 4/4 runs
+      total across builder+verifier), cleanup confirmed via direct `SELECT count(*)`
+      (0 leftover `source='exit_test'` rows). Reviewer verdict: SHIP, no blocking
+      findings. No security or frontend pass needed (internal ranking constant only, no
+      new trust boundary, no response-shape change).
+- [x] **Test suites re-run on the live stack — DONE.** `test_auth.py`, `test_capture.py`,
+      `test_extract.py` all re-run fresh in-container post-fix (not just the pre-existing
+      sandbox run) — all pass.
+- [ ] **Exit test still hasn't gone through real capture paths.** Two sub-gaps remain,
+      both blocked on the real user, not on code:
+      - Dashboard quick-note + OCR path: infra is ready (`caddy` brought back up, proxying
+        correctly — confirmed `curl :8080/api/v1/me` → `401`), but logging in needs the
+        real account password, which no agent has or should guess. **Needs the user to
+        log in and run a real photo capture through the dashboard UI.**
+      - Telegram bot path: fundamentally requires a message sent from the user's own
+        phone/Telegram account — not something an agent can simulate. **Needs the user to
+        send a real message (ideally with a photo) to the bot.**
